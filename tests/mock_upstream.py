@@ -12,6 +12,7 @@ ctrl keys (all optional):
 
 import http.server
 import json
+import socketserver
 import sys
 import time
 
@@ -78,4 +79,10 @@ class H(http.server.BaseHTTPRequestHandler):
         send(200, {"ok": True, "who": who, "beta": beta, "model": req.get("model")}, util)
 
 
-http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):   # skip the reverse DNS lookup, see cswap_rotator.proxy.Server
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
+Server(("127.0.0.1", int(sys.argv[1])), H).serve_forever()

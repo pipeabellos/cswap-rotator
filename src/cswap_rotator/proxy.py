@@ -24,6 +24,7 @@ import http.server
 import json
 import os
 import socket
+import socketserver
 import ssl
 import sys
 import threading
@@ -537,6 +538,14 @@ class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
     request_queue_size = 128   # many agents can connect at once
+
+    def server_bind(self):
+        # HTTPServer.server_bind resolves its own name with socket.getfqdn(), a reverse
+        # DNS lookup that can hang for a long time on some Macs (GitHub's macOS runners
+        # do). The socket is already listening by then, so sessions connect but get no
+        # answer. Skip it: the name is never used.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def handle_error(self, request, client_address):
         exc = sys.exc_info()[1]
