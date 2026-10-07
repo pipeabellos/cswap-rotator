@@ -40,8 +40,13 @@ def short_name(email):
     return local if dom in ("gmail.com", "googlemail.com", "outlook.com", "icloud.com") or not dom else dom.split(".")[0]
 
 
-def _status_json(timeout=3):
-    with urllib.request.urlopen(config.BASE_URL + "/rotator/status", timeout=timeout) as r:
+# Localhost must never go through an HTTP proxy (macOS system proxy settings, corporate
+# HTTPS_PROXY variables): urllib would otherwise route 127.0.0.1 through them.
+_LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _status_json(timeout=3.0):
+    with _LOCAL.open(config.BASE_URL + "/rotator/status", timeout=timeout) as r:
         return json.load(r)
 
 

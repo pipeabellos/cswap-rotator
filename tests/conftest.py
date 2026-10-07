@@ -19,6 +19,7 @@ os.environ["CSWAP_ROTATOR_HOME_DIR"] = _SCRATCH
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(os.path.dirname(HERE), "src")
 UA = "claude-cli/9.9.9 (external, cli)"   # the proxy only re-authenticates Claude Code
+LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # never via a proxy
 
 
 def _free_port():
@@ -27,17 +28,26 @@ def _free_port():
         return s.getsockname()[1]
 
 
-def _wait_http(url, timeout=10):
+def _wait_http(url, timeout=20, proc=None, errfile=None):
     end = time.time() + timeout
+    last = None
     while time.time() < end:
+        if proc is not None and proc.poll() is not None:
+            break
         try:
-            urllib.request.urlopen(url, timeout=1)
+            LOCAL.open(url, timeout=1)
             return
         except urllib.error.HTTPError:
             return          # it answered
-        except OSError:
+        except OSError as e:
+            last = e
             time.sleep(0.05)
-    raise RuntimeError(f"{url} did not come up")
+    err = ""
+    if errfile and os.path.exists(errfile):
+        with open(errfile) as f:
+            err = f.read()[-2000:]
+    code = proc.poll() if proc is not None else None
+    raise RuntimeError(f"{url} did not come up (exit={code}, last error={last!r})\n{err}")
 
 
 class Stack:
@@ -72,8 +82,11 @@ class Stack:
             _wait_http(f"http://127.0.0.1:{self.mock_port}/")
 
     def start(self):
-        self.rotator = subprocess.Popen([sys.executable, "-m", "cswap_rotator", "serve"], env=self.env)
-        _wait_http(f"http://127.0.0.1:{self.port}/rotator/status")
+        errfile = os.path.join(self.tmp, "rotator.stderr")
+        self._err = open(errfile, "a")
+        self.rotator = subprocess.Popen([sys.executable, "-m", "cswap_rotator", "serve"], env=self.env,
+                                        stdout=self._err, stderr=self._err)
+        _wait_http(f"http://127.0.0.1:{self.port}/rotator/status", proc=self.rotator, errfile=errfile)
 
     def restart(self):
         self.rotator.terminate()
@@ -100,7 +113,7 @@ class Stack:
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=json.dumps(body).encode(),
                                      headers=h, method="POST")
         try:
-            r = urllib.request.urlopen(req, timeout=20)
+            r = LOCAL.open(req, timeout=20)
             return r.status, r.read()
         except urllib.error.HTTPError as e:
             return e.code, e.read()
@@ -110,10 +123,10 @@ class Stack:
         return status, json.loads(data).get("who")
 
     def status(self):
-        return json.load(urllib.request.urlopen(f"http://127.0.0.1:{self.port}/rotator/status", timeout=5))
+        return json.load(LOCAL.open(f"http://127.0.0.1:{self.port}/rotator/status", timeout=5))
 
     def cool(self, key, model, seconds):
-        urllib.request.urlopen(urllib.request.Request(
+        LOCAL.open(urllib.request.Request(
             f"http://127.0.0.1:{self.port}/rotator/cooldown?key={key}&model={model}&seconds={seconds}",
             data=b"", method="POST"), timeout=5)
 
