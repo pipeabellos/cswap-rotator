@@ -1,0 +1,50 @@
+[project]
+name = "cswap-rotator"
+version = "0.1.0"
+description = "Per-request account rotation for Claude Code on top of claude-swap: subscriptions first, the Console API key last, no session restarts"
+readme = "README.md"
+requires-python = ">=3.12"
+# claude-swap is a peer, not a dependency: install this INTO cswap's environment
+# (uv tool install claude-swap --with cswap-rotator) so both run the same cswap code
+# against the same account store.
+dependencies = []
+authors = [{name = "Felipe Abello", email = "pipeabellos@gmail.com"}]
+license = {text = "MIT"}
+keywords = ["claude", "claude-code", "claude-swap", "cswap", "proxy", "rate-limit"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/pipeabellos/cswap-rotator"
+Repository = "https://github.com/pipeabellos/cswap-rotator"
+Issues = "https://github.com/pipeabellos/cswap-rotator/issues"
+
+[project.scripts]
+cswap-rotator = "cswap_rotator.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cswap_rotator"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-xdist>=3.5"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "-n auto"
