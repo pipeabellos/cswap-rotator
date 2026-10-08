@@ -80,6 +80,8 @@ class H(http.server.BaseHTTPRequestHandler):
 
 
 class Server(http.server.ThreadingHTTPServer):
+    request_queue_size = 128   # the default backlog of 5 refuses part of a 40-way burst
+
     def server_bind(self):   # skip the reverse DNS lookup, see cswap_rotator.proxy.Server
         socketserver.TCPServer.server_bind(self)
         self.server_name, self.server_port = self.server_address[:2]

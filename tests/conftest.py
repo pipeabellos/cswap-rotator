@@ -15,6 +15,7 @@ import pytest
 _SCRATCH = tempfile.mkdtemp(prefix="cswap-rotator-tests-")
 os.environ["CSWAP_DIR"] = _SCRATCH
 os.environ["CSWAP_ROTATOR_HOME_DIR"] = _SCRATCH
+os.environ["CSWAP_ROTATOR_FULL_PCT"] = "95"   # the tests exercise the full-account latch at 95%
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(os.path.dirname(HERE), "src")

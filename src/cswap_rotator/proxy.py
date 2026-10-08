@@ -4,7 +4,8 @@ Claude Code sessions point ANTHROPIC_BASE_URL here. For every inference request 
 proxy picks the credential:
 
   1. A subscription cswap manages. It follows cswap's choice: cswap's active account
-     whenever that account has room, so cswap, /status and every session agree;
+     whenever that account has room (FULL_PCT, 100 by default), so cswap, /status and
+     every session agree;
      otherwise the account this model is already on (prompt caching and server-side
      thread state are per account), else the one with the most room. A subscription
      counts as full at FULL_PCT of any usage window that applies to the model, read

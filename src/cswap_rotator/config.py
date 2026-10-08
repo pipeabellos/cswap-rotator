@@ -39,8 +39,10 @@ STATE_PATH = os.path.expanduser(_env("STATE", os.path.join(HOME_DIR, "state.json
 CREDS_FILE = _env("CREDS_FILE", None)
 
 # A subscription counts as full at this % of any usage window that applies to the
-# model, leaving headroom for bursts of parallel agents.
-FULL_PCT = float(_env("FULL_PCT", "95"))
+# model. 100 uses every subscription until Anthropic refuses it: the proxy then
+# retries that same request on the next account, so sessions never see the limit
+# and no buffer is needed. Lower it only to keep headroom on purpose.
+FULL_PCT = float(_env("FULL_PCT", "100"))
 # Lowered only in tests.
 MIN_COOLDOWN_S = float(_env("MIN_COOLDOWN_S", "60"))
 

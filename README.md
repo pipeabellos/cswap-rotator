@@ -6,7 +6,7 @@ cswap switches the login Claude Code uses. Between subscriptions that works well
 
 cswap-rotator is a small local proxy that removes that limit. Claude Code sessions point `ANTHROPIC_BASE_URL` at it, and it picks the credential for every request:
 
-1. **The subscription cswap has active**, as long as it is under 95% of every usage window that applies to the model. If it is full: the account the model is already on, then the one with the most room.
+1. **The subscription cswap has active**, until Anthropic refuses it for quota (or until `CSWAP_ROTATOR_FULL_PCT`, if you set one). If it is full: the account the model is already on, then the one with the most room.
 2. **The Console API key** from cswap's API-key slot, once every subscription is full.
 3. **Full subscriptions**, only if the API key is rate limited or out of credits.
 
@@ -21,7 +21,7 @@ Sessions never restart, never change auth mode, and never see a limit error whil
 | 401 / 403 on a subscription | Next account, and re-reads cswap's logins |
 | API key: `credit balance is too low` | Falls back to the least-full subscription |
 | Network error | A retryable 502 on the same account; Claude Code retries by itself |
-| Any response | Reads the live `anthropic-ratelimit-unified-*-utilization` headers; once an account reads 95% it stays "full" until that window resets |
+| Any response | Reads the live `anthropic-ratelimit-unified-*-utilization` headers; once an account reaches `CSWAP_ROTATOR_FULL_PCT` it stays "full" until that window resets |
 
 ## Install
 
@@ -61,7 +61,7 @@ It prints `⇄ <account> <usage>%` in green, `⇄ API key` in red while Console 
 
 ## Things to know
 
-- **Every account move costs each session one re-send of its context.** Anthropic keeps prompt caches and Claude Code's server-side conversation state per account. After a move, a session's next request gets a `No thread state was found` 404, and Claude Code replays the conversation on its own. That is why the proxy follows cswap, stays put until 95%, never moves for network errors or one-off refusals, and keeps its choices across restarts.
+- **Every account move costs each session one re-send of its context.** Anthropic keeps prompt caches and Claude Code's server-side conversation state per account. After a move, a session's next request gets a `No thread state was found` 404, and Claude Code replays the conversation on its own. That is why the proxy follows cswap, stays put until an account is full, never moves for network errors or one-off refusals, and keeps its choices across restarts.
 - **Other clients keep their own key.** A request that brings an API key other than cswap's (an app SDK that inherited `ANTHROPIC_BASE_URL`, `claude -p` with `ANTHROPIC_API_KEY` set) passes through untouched.
 - **cswap stays the owner of credentials.** The proxy reads logins through cswap's own code, never refreshes a token (refresh tokens are single use) and never takes cswap's locks.
 - **Local only.** It listens on 127.0.0.1 and refuses requests with an `Origin` header (browsers) or a foreign `Host` (DNS rebinding), so a web page cannot spend your quota through it.
@@ -73,7 +73,7 @@ It prints `⇄ <account> <usage>%` in green, `⇄ API key` in red while Console 
 | Variable | Default | |
 | --- | --- | --- |
 | `CSWAP_ROTATOR_PORT` | `8890` | listen port (127.0.0.1 only) |
-| `CSWAP_ROTATOR_FULL_PCT` | `95` | usage % at which a subscription counts as full |
+| `CSWAP_ROTATOR_FULL_PCT` | `100` | usage % at which a subscription counts as full; the default uses each one until Anthropic refuses it, since the proxy retries that request on the next account |
 | `CSWAP_ROTATOR_HOME_DIR` | `<cswap dir>/rotator` | log and state files |
 | `CSWAP_ROTATOR_LOG` | `<home>/rotator.log` | JSON lines: request, switch, full, cooldown, passthrough |
 | `CSWAP_ROTATOR_STATE` | `<home>/state.json` | sticky choices, cooldowns, full-account latches |
