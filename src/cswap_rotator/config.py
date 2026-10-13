@@ -35,6 +35,8 @@ LOG_PATH = os.path.expanduser(_env("LOG", os.path.join(HOME_DIR, "rotator.log"))
 # Sticky choices, quota cooldowns and full-account latches survive restarts: a restart
 # that re-picked accounts would make every session rebuild its context elsewhere.
 STATE_PATH = os.path.expanduser(_env("STATE", os.path.join(HOME_DIR, "state.json")))
+# The last addresses Anthropic's host resolved to, used while DNS is down.
+DNS_PATH = os.path.expanduser(_env("DNS", os.path.join(HOME_DIR, "dns.json")))
 # Tests supply credentials from a JSON file instead of cswap's store.
 CREDS_FILE = _env("CREDS_FILE", None)
 
@@ -58,5 +60,11 @@ MAX_COOLDOWN_S = 7 * 86400
 LIVE_MAX_AGE_S = 900         # trust a response's live utilization headers this long
 NO_CREDIT_COOLDOWN_S = 3600  # Console API key answered "credit balance is too low"
 ACCOUNT_WINDOWS = ("5h", "7d")  # usage windows shared by every model on an account
-UPSTREAM_TIMEOUT_S = 900
+UPSTREAM_TIMEOUT_S = 900   # reads only: a long answer can take minutes
+CONNECT_TIMEOUT_S = 10     # per address, so a dead IPv6 path falls through to IPv4 fast
+# A request that never reached Anthropic (DNS, connect or TLS failed) is retried on the
+# same account for this long before the session gets a 502. Flaky Wi-Fi drops DNS for a
+# few minutes at a time; Claude Code alone burns its 10 attempts in about a minute.
+NET_RETRY_WINDOW_S = float(_env("NET_RETRY_S", "60"))
+NET_RETRY_AFTER_S = 10     # the 502 asks Claude Code to wait this long before its next try
 LOG_MAX_BYTES = 20 * 1024 * 1024

@@ -24,6 +24,7 @@ import http.client
 import http.server
 import json
 import os
+import select
 import socket
 import socketserver
 import ssl
@@ -32,7 +33,7 @@ import threading
 import time
 import urllib.parse
 
-from . import config
+from . import config, net
 from .accounts import Credentials
 from .usage import live_windows, log, reset_seconds, unified_status, window_applies
 
@@ -241,9 +242,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         n = int(self.headers.get("content-length") or 0)
         return self.rfile.read(n) if n else b""
 
-    def _send_json(self, status, obj):
+    def _send_json(self, status, obj, extra=()):
         body = json.dumps(obj, indent=2, default=str).encode()
         self.send_response(status)
+        for k, v in extra:
+            self.send_header(k, v)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
         self.end_headers()
@@ -270,8 +273,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             conn = http.client.HTTPConnection(up.hostname, up.port or 80,
                                               timeout=config.UPSTREAM_TIMEOUT_S)
-        conn.request(method, path, body=body, headers=headers)
-        return conn, conn.getresponse()
+        conn._create_connection = net.create_connection
+        try:
+            conn.request(method, path, body=body, headers=headers)
+            return conn, conn.getresponse()
+        except BaseException:
+            conn.close()
+            raise
+
+    def _client_gone(self):
+        """True once the session closed its connection (Esc, exit) while we wait."""
+        try:
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            return bool(readable) and self.connection.recv(1, socket.MSG_PEEK) == b""
+        except (OSError, ValueError):
+            return True
 
     def _base_headers(self, body):
         out = {}
@@ -400,21 +416,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 betas.append(config.OAUTH_BETA)
             if betas:
                 headers["anthropic-beta"] = ",".join(betas)
-            conn = None
-            try:
-                conn, resp = self._upstream("POST", self.path, body, headers)
-            except (OSError, http.client.HTTPException) as e:
-                # The network, not the account: moving to another account would only
-                # cost every moved session its thread state and prompt cache. Hand
-                # Claude Code a retryable 502 and it retries the same request.
-                if conn:
-                    conn.close()
-                attempts.append((key, f"neterr:{type(e).__name__}"))
-                log("request", model=model, path=self.path.split("?", 1)[0], used=key, status=502,
-                    attempts=attempts, ms=int((time.time() - t0) * 1000), kb=len(body) // 1024)
-                return self._send_json(502, {"type": "error", "error": {
-                    "type": "api_error",
-                    "message": f"cswap-rotator: network error reaching Anthropic ({type(e).__name__}), retry"}})
+            # The network, not the account: never move to another account for it (that
+            # would cost every moved session its thread state and prompt cache). Retry
+            # the same account while the network comes back, then hand Claude Code a
+            # retryable 502 that asks it to wait before its next attempt.
+            deadline, delay = time.time() + config.NET_RETRY_WINDOW_S, 1.0
+            while True:
+                try:
+                    conn, resp = self._upstream("POST", self.path, body, headers)
+                    break
+                except (OSError, http.client.HTTPException) as e:
+                    attempts.append((key, f"neterr:{type(e).__name__}"))
+                    gone = self._client_gone()
+                    if gone or time.time() + delay > deadline:
+                        log("request", model=model, path=self.path.split("?", 1)[0], used=key,
+                            status=499 if gone else 502, attempts=attempts,
+                            ms=int((time.time() - t0) * 1000), kb=len(body) // 1024)
+                        if gone:
+                            return
+                        return self._send_json(502, {"type": "error", "error": {
+                            "type": "api_error",
+                            "message": f"cswap-rotator: network error reaching Anthropic ({type(e).__name__}), retry"}},
+                            extra=[("retry-after", str(config.NET_RETRY_AFTER_S)), ("x-should-retry", "true")])
+                    time.sleep(delay)
+                    delay = min(delay * 2, 15.0)
             status = resp.status
             if key != "apikey":
                 windows = live_windows(resp.getheaders())
@@ -558,6 +583,12 @@ class Server(http.server.ThreadingHTTPServer):
 def serve():
     os.makedirs(os.path.dirname(config.LOG_PATH), exist_ok=True)
     os.makedirs(os.path.dirname(config.STATE_PATH), exist_ok=True)
+    net.load()
+    up = config.UPSTREAM
+    try:
+        net.resolve(up.hostname, up.port or (443 if up.scheme == "https" else 80))
+    except OSError:
+        pass   # the remembered addresses (if any) carry the start
     CREDS.refresh(force=True)
     STATE.load()
     log("start", listen=f"{config.HOST}:{config.PORT}", upstream=config.UPSTREAM.geturl(),

@@ -20,7 +20,7 @@ Sessions never restart, never change auth mode, and never see a limit error whil
 | 429 while the account still has quota (the request itself was refused, e.g. a huge uncached prompt) | Retries elsewhere without moving anyone; after two subscriptions refuse it, the API key handles that one request |
 | 401 / 403 on a subscription | Next account, and re-reads cswap's logins |
 | API key: `credit balance is too low` | Falls back to the least-full subscription |
-| Network error | A retryable 502 on the same account; Claude Code retries by itself |
+| Network error (DNS, connect, TLS) | Retries the same account for up to 60 seconds, using the last addresses that resolved while DNS is down, then answers a 502 asking Claude Code to wait 10 seconds before its next try. A Wi-Fi drop of several minutes costs a pause, not a failed session |
 | Any response | Reads the live `anthropic-ratelimit-unified-*-utilization` headers; once an account reaches `CSWAP_ROTATOR_FULL_PCT` it stays "full" until that window resets |
 
 ## Install
@@ -77,6 +77,8 @@ It prints `⇄ <account> <usage>%` in green, `⇄ API key` in red while Console 
 | `CSWAP_ROTATOR_HOME_DIR` | `<cswap dir>/rotator` | log and state files |
 | `CSWAP_ROTATOR_LOG` | `<home>/rotator.log` | JSON lines: request, switch, full, cooldown, passthrough |
 | `CSWAP_ROTATOR_STATE` | `<home>/state.json` | sticky choices, cooldowns, full-account latches |
+| `CSWAP_ROTATOR_NET_RETRY_S` | `60` | how long a request that never reached Anthropic is retried before the 502 |
+| `CSWAP_ROTATOR_DNS` | `<home>/dns.json` | last addresses that resolved, used while DNS is down |
 | `CSWAP_ROTATOR_UPSTREAM` | `https://api.anthropic.com` | |
 
 ## Development

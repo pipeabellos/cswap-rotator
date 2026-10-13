@@ -54,7 +54,7 @@ def _wait_http(url, timeout=20, proc=None, errfile=None):
 class Stack:
     """A mock Anthropic API plus a cswap-rotator in front of it, both subprocesses."""
 
-    def __init__(self, tmp, creds=None, upstream=None):
+    def __init__(self, tmp, creds=None, upstream=None, env=None, mock_port=None):
         self.tmp = str(tmp)
         self.ctrl_path = os.path.join(self.tmp, "ctrl.json")
         self.ctrl()
@@ -64,22 +64,28 @@ class Stack:
         self.creds_path = os.path.join(self.tmp, "creds.json")
         with open(self.creds_path, "w") as f:
             json.dump(creds, f)
-        self.mock_port, self.port = _free_port(), _free_port()
+        self.mock_port, self.port = mock_port or _free_port(), _free_port()
         self.log_path = os.path.join(self.tmp, "rotator.log")
         self.state_path = os.path.join(self.tmp, "state.json")
         self.procs = []
-        if upstream is None:
+        # The fake API runs unless the test points the proxy somewhere else on its own
+        # (a dead port), or names the port it should run on (behind a fake host name).
+        run_mock = upstream is None or mock_port is not None
+        if run_mock:
             self.procs.append(subprocess.Popen([sys.executable, os.path.join(HERE, "mock_upstream.py"),
                                                 str(self.mock_port), self.ctrl_path]))
+        if upstream is None:
             upstream = f"http://127.0.0.1:{self.mock_port}"
         self.env = dict(os.environ, PYTHONPATH=SRC, CSWAP_DIR=self.tmp,
                         CSWAP_ROTATOR_PORT=str(self.port), CSWAP_ROTATOR_UPSTREAM=upstream,
                         CSWAP_ROTATOR_CREDS_FILE=self.creds_path, CSWAP_ROTATOR_MIN_COOLDOWN_S="1",
                         CSWAP_ROTATOR_LOG=self.log_path, CSWAP_ROTATOR_STATE=self.state_path,
-                        CSWAP_ROTATOR_HOME_DIR=self.tmp)
+                        CSWAP_ROTATOR_HOME_DIR=self.tmp, CSWAP_ROTATOR_NET_RETRY_S="1",
+                        CSWAP_ROTATOR_DNS=os.path.join(self.tmp, "dns.json"))
+        self.env.update(env or {})
         self.rotator = None
         self.start()
-        if upstream.endswith(str(self.mock_port)):
+        if run_mock:
             _wait_http(f"http://127.0.0.1:{self.mock_port}/")
 
     def start(self):

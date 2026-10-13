@@ -4,9 +4,14 @@ import concurrent.futures
 import http.client
 import json
 import os
+import subprocess
+import sys
+import threading
 import time
+import urllib.error
+import urllib.request
 
-from conftest import UA
+from conftest import HERE, LOCAL, UA, _free_port
 
 API = "APIKEY:sk-ant-api-TESTKEY"
 M = {"model": "opus"}
@@ -162,10 +167,43 @@ def test_restart_keeps_sticky_choice_and_quota_cooldowns(stack):
     assert "sub:a|q" in after["cooldowns_s"]
 
 
-def test_network_error_returns_retryable_502_without_trying_other_accounts(make_stack):
+def test_network_error_retries_the_same_account_then_asks_for_a_later_retry(make_stack):
     s = make_stack(upstream="http://127.0.0.1:9")   # nothing listens there
-    assert s.post(M)[0] == 502
-    assert len(s.last_request()["attempts"]) == 1
+    req = urllib.request.Request(f"http://127.0.0.1:{s.port}/v1/messages", data=b'{"model": "m"}',
+                                 headers={"content-type": "application/json", "user-agent": UA,
+                                          "authorization": "Bearer x"}, method="POST")
+    try:
+        LOCAL.open(req, timeout=20)
+        status, headers = 200, {}
+    except urllib.error.HTTPError as e:
+        status, headers = e.code, dict(e.headers)
+    assert status == 502
+    assert headers.get("retry-after") == "10" and headers.get("x-should-retry") == "true"
+    assert {a[0] for a in s.last_request()["attempts"]} == {"sub:a"}
+
+
+def test_dns_down_uses_the_last_address_that_resolved(tmp_path, make_stack):
+    dns = tmp_path / "remembered.json"
+    dns.write_text(json.dumps({"upstream.invalid": ["127.0.0.1"]}))   # .invalid never resolves
+    port = _free_port()
+    s = make_stack(mock_port=port, upstream=f"http://upstream.invalid:{port}",
+                   env={"CSWAP_ROTATOR_DNS": str(dns)})
+    assert s.who(M) == (200, "tokA")
+
+
+def test_network_back_within_the_window_means_no_error_for_the_session(make_stack):
+    port = _free_port()
+    s = make_stack(upstream=f"http://127.0.0.1:{port}", env={"CSWAP_ROTATOR_NET_RETRY_S": "20"})
+    late = []
+    threading.Timer(2.5, lambda: late.append(subprocess.Popen(
+        [sys.executable, os.path.join(HERE, "mock_upstream.py"), str(port), s.ctrl_path]))).start()
+    t0 = time.time()
+    try:
+        assert s.who(M) == (200, "tokA")
+        assert time.time() - t0 > 2
+    finally:
+        for p in late:
+            p.terminate()
 
 
 def test_follows_cswaps_active_account(make_stack):
