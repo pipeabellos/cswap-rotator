@@ -19,7 +19,7 @@ Sessions never restart, never change auth mode, and never see a limit error whil
 | 429 with `anthropic-ratelimit-unified-status: rejected` (account out of quota) | Parks that account for that model until its window resets, retries the request on the next account |
 | 429 while the account still has quota (the request itself was refused, e.g. a huge uncached prompt) | Retries elsewhere without moving anyone; after two subscriptions refuse it, the API key handles that one request |
 | 401 / 403 on a subscription | Next account, and re-reads cswap's logins |
-| API key: `credit balance is too low` | Falls back to the least-full subscription |
+| API key: `credit balance is too low`, or the Console monthly spend limit (`reached your specified API usage limits`) | Falls back to the least-full subscription |
 | Network error (DNS, connect, TLS) | Retries the same account for up to 60 seconds, using the last addresses that resolved while DNS is down, then answers a 502 asking Claude Code to wait 10 seconds before its next try. A Wi-Fi drop of several minutes costs a pause, not a failed session |
 | Any response | Reads the live `anthropic-ratelimit-unified-*-utilization` headers; once an account reaches `CSWAP_ROTATOR_FULL_PCT` it stays "full" until that window resets |
 

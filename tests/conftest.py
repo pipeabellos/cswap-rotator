@@ -107,7 +107,7 @@ class Stack:
                 p.wait()
 
     def ctrl(self, **kw):
-        c = {"limited": [], "rejected": [], "badauth": [], "nocredit": [], "util": {}, "retry_after": 2}
+        c = {"limited": [], "rejected": [], "badauth": [], "nocredit": [], "spendlimit": [], "util": {}, "retry_after": 2}
         c.update(kw)
         with open(self.ctrl_path, "w") as f:
             json.dump(c, f)

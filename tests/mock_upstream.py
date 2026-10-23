@@ -6,6 +6,7 @@ ctrl keys (all optional):
   rejected: credentials answered with a quota 429 (unified-status: rejected)
   badauth:  credentials answered with 401
   nocredit: API keys answered with 400 "credit balance is too low"
+  spendlimit: API keys answered with 400 "reached your specified API usage limits"
   util:     {credential: {window: fraction}} sent back as live usage headers
   retry_after: seconds for retry-after / the unified reset
 """
@@ -58,6 +59,11 @@ class H(http.server.BaseHTTPRequestHandler):
             return send(400, {"type": "error", "error": {
                 "type": "invalid_request_error",
                 "message": "Your credit balance is too low to access the Anthropic API."}, "who": who})
+        if who in ctrl.get("spendlimit", []):
+            return send(400, {"type": "error", "error": {
+                "type": "invalid_request_error",
+                "message": "You have reached your specified API usage limits. "
+                           "You will regain access on 2026-11-01 at 00:00 UTC."}, "who": who})
         util = []
         for win, frac in (ctrl.get("util", {}).get(who) or {}).items():
             util += [(f"anthropic-ratelimit-unified-{win}-utilization", str(frac)),

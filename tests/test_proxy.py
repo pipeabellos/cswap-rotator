@@ -101,6 +101,14 @@ def test_api_key_out_of_credits_squeezes_the_emptiest_full_subscription(stack):
     assert stack.who(M) == (200, "tokA")
 
 
+def test_api_key_at_console_spend_limit_squeezes_the_emptiest_full_subscription(stack):
+    stack.ctrl(util={"tokA": {"7d": 0.96}, "tokB": {"7d": 0.97}, "tokC": {"5h": 0.99}})
+    for _ in range(3):
+        stack.who(M)
+    stack.ctrl(util={"tokA": {"7d": 0.96}, "tokB": {"7d": 0.97}, "tokC": {"5h": 0.99}}, spendlimit=[API])
+    assert stack.who(M) == (200, "tokA")
+
+
 def test_cswap_usage_cache_reset_window_counts_as_empty(stack):
     now = time.time()
 

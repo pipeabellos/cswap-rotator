@@ -449,8 +449,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             data = None
             no_credit = False
             if key == "apikey" and status == 400:
-                data = resp.read()   # small JSON error; "credit balance is too low" = out of credits
-                no_credit = b"credit balance" in data.lower()
+                data = resp.read()   # small JSON error; out of credits, or the Console spend limit
+                low = data.lower()   # "credit balance is too low" / "reached your specified API usage limits"
+                no_credit = b"credit balance" in low or b"usage limits" in low
             failover = status == 429 or no_credit or (status in (401, 403) and key != "apikey")
             if failover and not is_last:
                 if data is None:
